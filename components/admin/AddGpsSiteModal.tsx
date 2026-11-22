@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState, useTransition } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react"
 import { createSite } from "@/lib/admin/site-list-actions"
 import {
   collectSiteFieldErrors,
@@ -13,6 +13,7 @@ import { SearchableCombobox } from "@/components/shared/SearchableCombobox"
 import { isFormDirty } from "@/lib/admin/form-dirty"
 import { FONT_HEADING, TYPE } from "@/lib/admin-typography"
 import { AdminFormField, AdminTextInput } from "@/components/admin/AdminFormControls"
+import LocationSearch, { type LocationSuggestion } from "@/components/admin/LocationSearch"
 
 //Map
 import dynamic from "next/dynamic"
@@ -47,6 +48,10 @@ export default function AddGpsSiteModal({
   const [fieldErrors, setFieldErrors] = useState<SiteFieldErrors>({})
   const [formError, setFormError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
+  const [mapFocusKey, setMapFocusKey] = useState(0)
+  const [searchKey, setSearchKey] = useState(0)
+  /** Site name last filled in from a search pick; null once the user types their own. */
+  const autoSiteName = useRef<string | null>(null)
 
   const classOptions = useMemo(
     () =>
@@ -64,6 +69,9 @@ export default function AddGpsSiteModal({
     setLngInput(String(empty.centerLongitude))
     setFieldErrors({})
     setFormError(null)
+    setMapFocusKey(0)
+    autoSiteName.current = null
+    setSearchKey((k) => k + 1)
   }, [])
 
   const close = useCallback(() => {
@@ -130,6 +138,31 @@ export default function AddGpsSiteModal({
       return next
     })
     setFormError(null)
+  }
+
+  function handleLocationSelect(place: LocationSuggestion) {
+    const lat = Number(place.lat.toFixed(6))
+    const lng = Number(place.lng.toFixed(6))
+    patchForm({
+      centerLatitude: lat,
+      centerLongitude: lng,
+    })
+    // Use the place name as the site name if it's empty or still the one we filled in
+    // from a previous pick — but never overwrite a name the user typed themselves.
+    const current = form.siteName.trim()
+    if (!current || current === autoSiteName.current) {
+      patchForm({ siteName: place.name })
+      autoSiteName.current = place.name
+    }
+    setLatInput(String(lat))
+    setLngInput(String(lng))
+    setFieldErrors((prev) => {
+      const next = { ...prev }
+      delete next.centerLatitude
+      delete next.centerLongitude
+      return next
+    })
+    setMapFocusKey((k) => k + 1)
   }
 
   const parsedLat = Number.parseFloat(latInput)
@@ -268,6 +301,18 @@ export default function AddGpsSiteModal({
           >
             <div style={{ display: "flex", flexDirection: "column", gap: 18, minWidth: 0 }}>
               <AdminFormField
+                label="Search Location:"
+                htmlFor="gps_location_search"
+                hint="Pick a suggestion to drop the pin there. You can still drag the pin to fine-tune."
+              >
+                <LocationSearch
+                  key={searchKey}
+                  onSelect={handleLocationSelect}
+                  biasCenter={[form.centerLatitude, form.centerLongitude]}
+                />
+              </AdminFormField>
+
+              <AdminFormField
                 label="Site Name:"
                 htmlFor="gps_site_name"
                 error={fieldErrors.siteName}
@@ -404,6 +449,7 @@ export default function AddGpsSiteModal({
                 <Map
                   center={[form.centerLatitude, form.centerLongitude]}
                   radius={form.radiusMeters}
+                  focusKey={mapFocusKey}
                   onCenterChange={(lat, lng) => {
                     patchForm({ centerLatitude: lat, centerLongitude: lng })
                     setLatInput(String(lat))

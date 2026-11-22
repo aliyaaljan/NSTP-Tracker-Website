@@ -1,9 +1,9 @@
 "use client"
 
-import {MapContainer, TileLayer, Marker, Popup, Circle} from "react-leaflet"
+import {MapContainer, TileLayer, Marker, Popup, Circle, useMap} from "react-leaflet"
 import "leaflet/dist/leaflet.css"
 import { divIcon, type Marker as LeafletMarker } from "leaflet"
-import { useRef, useMemo } from "react"
+import { useRef, useMemo, useEffect } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
 import { FaMapMarkerAlt } from "react-icons/fa"
 
@@ -19,9 +19,22 @@ interface AdminMapProps {
   center: [number, number]
   radius: number
   onCenterChange: (lat: number, lng: number) => void
+  /** Bump this to fly the map to `center` (e.g. after picking a search result). */
+  focusKey?: number
 }
 
-export default function AdminMap({center, radius, onCenterChange}:AdminMapProps) {
+function FlyToCenter({ center, focusKey }: { center: [number, number]; focusKey?: number }) {
+  const map = useMap()
+  const centerRef = useRef(center)
+  centerRef.current = center
+  useEffect(() => {
+    if (!focusKey) return
+    map.flyTo(centerRef.current, Math.max(map.getZoom(), 17), { duration: 0.8 })
+  }, [focusKey, map])
+  return null
+}
+
+export default function AdminMap({center, radius, onCenterChange, focusKey}:AdminMapProps) {
     const cen = center ?? [16.41639, 120.59306]
     const markerRef = useRef<LeafletMarker>(null)
     const eventHandlers = useMemo(
@@ -60,6 +73,7 @@ export default function AdminMap({center, radius, onCenterChange}:AdminMapProps)
               </div>
             </Popup>
             </Marker>
+            <FlyToCenter center={cen} focusKey={focusKey} />
             <Circle center={cen} pathOptions={{color: 'green'}} radius={radius}></Circle>
         </MapContainer>
     )
