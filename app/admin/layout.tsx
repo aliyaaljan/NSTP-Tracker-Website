@@ -53,6 +53,7 @@ const adminNav: NavGroup[] = [
       },
       { label: "Site List", href: "/admin/sites", icon: "ti-map-pin" },
       { label: "Forms", href: "/admin/forms", icon: "ti-clipboard-check" },
+      { label: "Tickets", href: "/admin/tickets", icon: "ti-ticket" },
     ],
   },
   {

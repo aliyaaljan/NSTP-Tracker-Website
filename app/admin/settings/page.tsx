@@ -14,6 +14,7 @@ async function SettingsContent() {
       schoolYearOptions={data.schoolYearOptions}
       semesterOptions={data.semesterOptions}
       holidays={data.holidays}
+      events={data.events}
       meta={data.meta}
       currentUser={data.currentUser}
     />

@@ -2,11 +2,13 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react"
 import AddHolidayModal from "@/components/admin/AddHolidayModal"
+import AddCalendarEventModal from "@/components/admin/AddCalendarEventModal"
 import ConfirmDeleteModal from "@/components/admin/ConfirmDeleteModal"
 import TermCloseoutConfirmModal from "@/components/admin/TermCloseoutConfirmModal"
 import ListPagination from "@/components/shared/ListPagination"
 import {
   closeOutOutgoingEnrollments,
+  deleteCalendarEvent,
   deleteHoliday,
   getOutgoingActiveEnrollmentSummary,
   updateAcademicConfig,
@@ -20,6 +22,7 @@ import {
 import type {
   AcademicConfig,
   AdminCurrentUser,
+  CalendarEventRow,
   HolidayRow,
   SchoolYearOption,
   SemesterOption,
@@ -28,6 +31,7 @@ import type {
 } from "@/lib/admin/settings"
 import {
   buildUniqueSchoolYearOptions,
+  formatEventTimeRange,
   resolveTermOption,
   SETTINGS_LIST_PAGE_SIZE,
   paginateSettingsList,
@@ -259,6 +263,7 @@ export default function SettingsClient({
   schoolYearOptions,
   semesterOptions,
   holidays,
+  events,
   meta,
   currentUser,
 }: {
@@ -266,6 +271,7 @@ export default function SettingsClient({
   schoolYearOptions: SchoolYearOption[]
   semesterOptions: SemesterOption[]
   holidays: HolidayRow[]
+  events: CalendarEventRow[]
   meta: SettingsMeta
   currentUser: AdminCurrentUser
 }) {
@@ -305,6 +311,53 @@ export default function SettingsClient({
   function handleHolidayPageSizeChange(nextSize: number) {
     setHolidayPageSize(nextSize)
     setHolidayPage(1)
+  }
+
+  const [eventPage, setEventPage] = useState(1)
+  const [eventPageSize, setEventPageSize] = useState(SETTINGS_LIST_PAGE_SIZE)
+  const [addEventOpen, setAddEventOpen] = useState(false)
+  const [deleteEventTarget, setDeleteEventTarget] = useState<CalendarEventRow | null>(null)
+  const [eventDeleteError, setEventDeleteError] = useState<string | null>(null)
+  const [isDeletingEvent, startDeleteEvent] = useTransition()
+
+  const todayIso = useMemo(() => {
+    const d = new Date()
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+  }, [])
+
+  // Upcoming events first (soonest first), then past events (most recent first).
+  const sortedEvents = useMemo(() => {
+    const byDate = (a: CalendarEventRow, b: CalendarEventRow) =>
+      a.date.localeCompare(b.date) || (a.startTime ?? "").localeCompare(b.startTime ?? "")
+    const upcoming = events.filter((e) => e.date >= todayIso).sort(byDate)
+    const past = events.filter((e) => e.date < todayIso).sort((a, b) => byDate(b, a))
+    return [...upcoming, ...past]
+  }, [events, todayIso])
+
+  const eventListBodyHeight = eventPageSize * SETTINGS_LIST_ROW_HEIGHT
+
+  const eventPagination = useMemo(
+    () => paginateSettingsList(sortedEvents, eventPage, eventPageSize),
+    [sortedEvents, eventPage, eventPageSize]
+  )
+
+  function handleEventPageSizeChange(nextSize: number) {
+    setEventPageSize(nextSize)
+    setEventPage(1)
+  }
+
+  function handleConfirmDeleteEvent() {
+    if (!deleteEventTarget) return
+    setEventDeleteError(null)
+    startDeleteEvent(async () => {
+      const result = await deleteCalendarEvent(deleteEventTarget.eventId)
+      if (!result.ok) {
+        setEventDeleteError(result.error)
+        return
+      }
+      setDeleteEventTarget(null)
+      window.location.reload()
+    })
   }
   const hasAcademicChanges = useMemo(() => {
     const original = academicConfigToPayload(academic)
@@ -761,6 +814,139 @@ export default function SettingsClient({
             />
           </SettingsListPanel>
         </SettingsCard>
+
+        <div style={{ gridColumn: "1 / -1" }}>
+          <SettingsCard
+            title="Events & Reminders"
+            icon="ti-bell"
+            action={
+              <GreenButton onClick={() => setAddEventOpen(true)}>
+                <i className="ti ti-plus" style={{ fontSize: 14 }} />
+                Add Event
+              </GreenButton>
+            }
+          >
+            <SettingsListPanel>
+              <FixedListBody
+                empty={eventPagination.totalCount === 0}
+                emptyMessage="No events yet. Add one (e.g. Basic First Aid Training) and it shows on every student's and adviser's calendar."
+                bodyHeight={eventListBodyHeight}
+              >
+                <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
+                  {padToPageSize(eventPagination.rows, eventPageSize).map((event, index) => {
+                    if (!event) {
+                      return <ListPlaceholderRow key={`event-pad-${index}`} index={index} />
+                    }
+                    const isPast = event.date < todayIso
+                    const time = formatEventTimeRange(event.startTime, event.endTime)
+                    const meta = [
+                      formatDisplayDate(event.date),
+                      time || "All day",
+                      event.location,
+                      event.description,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")
+                    return (
+                      <li
+                        key={event.eventId}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          gap: 12,
+                          height: SETTINGS_LIST_ROW_HEIGHT,
+                          minHeight: SETTINGS_LIST_ROW_HEIGHT,
+                          padding: "0 18px",
+                          boxSizing: "border-box",
+                          opacity: isPast ? 0.55 : 1,
+                          ...settingsListRowBorder(index),
+                        }}
+                      >
+                        <div style={{ minWidth: 0 }}>
+                          <div
+                            style={{
+                              ...TYPE.bodyBold,
+                              color: COLORS.textDark,
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 8,
+                              minWidth: 0,
+                            }}
+                          >
+                            <span
+                              style={{
+                                whiteSpace: "nowrap",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                              }}
+                            >
+                              {event.title}
+                            </span>
+                            {isPast && (
+                              <span
+                                style={{
+                                  ...TYPE.caption,
+                                  fontWeight: 600,
+                                  color: COLORS.textGray,
+                                  border: `1px solid ${COLORS.border}`,
+                                  borderRadius: 10,
+                                  padding: "0 8px",
+                                  flexShrink: 0,
+                                }}
+                              >
+                                Past
+                              </span>
+                            )}
+                          </div>
+                          <div
+                            title={meta}
+                            style={{
+                              ...TYPE.caption,
+                              color: COLORS.textGray,
+                              marginTop: 2,
+                              whiteSpace: "nowrap",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                            }}
+                          >
+                            {meta}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setDeleteEventTarget(event)}
+                          aria-label={`Delete ${event.title}`}
+                          style={{
+                            background: "none",
+                            border: "none",
+                            color: COLORS.maroon,
+                            cursor: "pointer",
+                            padding: 4,
+                            display: "flex",
+                            flexShrink: 0,
+                          }}
+                        >
+                          <i className="ti ti-trash" style={{ fontSize: 16 }} />
+                        </button>
+                      </li>
+                    )
+                  })}
+                </ul>
+              </FixedListBody>
+
+              <ListPagination
+                page={eventPage}
+                totalPages={eventPagination.totalPages}
+                totalCount={eventPagination.totalCount}
+                pageSize={eventPageSize}
+                onPageChange={setEventPage}
+                onPageSizeChange={handleEventPageSizeChange}
+                containerStyle={{ paddingLeft: 20, paddingRight: 20 }}
+              />
+            </SettingsListPanel>
+          </SettingsCard>
+        </div>
       </div>
 
       <TermCloseoutConfirmModal
@@ -794,6 +980,30 @@ export default function SettingsClient({
           if (isDeletingHoliday) return
           setDeleteHolidayTarget(null)
           setHolidayDeleteError(null)
+        }}
+      />
+
+      <AddCalendarEventModal
+        open={addEventOpen}
+        termId={academicForm.termId}
+        onClose={() => setAddEventOpen(false)}
+      />
+
+      <ConfirmDeleteModal
+        open={Boolean(deleteEventTarget)}
+        title="Delete Event"
+        message={
+          deleteEventTarget
+            ? `Remove "${deleteEventTarget.title}" (${formatDisplayDate(deleteEventTarget.date)})? It will disappear from every student's and adviser's calendar.`
+            : ""
+        }
+        isPending={isDeletingEvent}
+        error={eventDeleteError}
+        onConfirm={handleConfirmDeleteEvent}
+        onClose={() => {
+          if (isDeletingEvent) return
+          setDeleteEventTarget(null)
+          setEventDeleteError(null)
         }}
       />
 

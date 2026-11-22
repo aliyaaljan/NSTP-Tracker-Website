@@ -7,6 +7,7 @@ import {
   formatSchoolYearOption,
   mapTermToAcademicConfig,
   type AdminCurrentUser,
+  type CalendarEventRow,
   type HolidayRow,
   type SettingsMeta,
   type SettingsPageData,
@@ -16,6 +17,8 @@ import {
 import {
   validateAcademicConfigPayload,
   validateHolidayCreatePayload,
+  validateCalendarEventCreatePayload,
+  type CalendarEventCreatePayload,
   validateAcademicYearCreatePayload,
   type AcademicConfigPayload,
   type HolidayCreatePayload,
@@ -86,9 +89,12 @@ export async function getSettingsData(): Promise<SettingsPageData> {
         requiredNstpHours,
       }
 
-  const holidays: HolidayRow[] = activeTerm
-    ? await fetchHolidays(supabase, activeTerm.term_id)
-    : []
+  const [holidays, events]: [HolidayRow[], CalendarEventRow[]] = activeTerm
+    ? await Promise.all([
+        fetchHolidays(supabase, activeTerm.term_id),
+        fetchCalendarEvents(supabase, activeTerm.term_id),
+      ])
+    : [[], []]
 
   const semesterLabel = SEMESTER_LABELS[academic.semester] ?? academic.semester
 
@@ -108,6 +114,7 @@ export async function getSettingsData(): Promise<SettingsPageData> {
       { value: "midyear", label: "Midyear" },
     ],
     holidays,
+    events,
     meta,
     currentUser,
   }
@@ -380,6 +387,85 @@ async function fetchHolidays(
     date: row.holiday_date,
     description: row.description,
   }))
+}
+
+async function fetchCalendarEvents(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  termId: string
+): Promise<CalendarEventRow[]> {
+  const { data, error } = await supabase
+    .from("calendar_event")
+    .select("event_id, term_id, title, event_date, start_time, end_time, location, description")
+    .eq("term_id", termId)
+    .order("event_date", { ascending: true })
+    .order("start_time", { ascending: true, nullsFirst: true })
+
+  if (error) {
+    // e.g. table missing because migration 0011 isn't applied yet — show an empty list.
+    console.error("[getSettingsData] calendar_event query failed", error)
+    return []
+  }
+
+  return (data ?? []).map((row) => ({
+    eventId: row.event_id,
+    termId: row.term_id,
+    title: row.title,
+    date: row.event_date,
+    startTime: row.start_time ? String(row.start_time).slice(0, 5) : null,
+    endTime: row.end_time ? String(row.end_time).slice(0, 5) : null,
+    location: row.location,
+    description: row.description,
+  }))
+}
+
+export async function createCalendarEvent(
+  payload: CalendarEventCreatePayload
+): Promise<SettingsMutationResult> {
+  const role = await getAppUserRole()
+  if (role !== "admin") return { ok: false, error: "Unauthorized." }
+
+  const validationError = validateCalendarEventCreatePayload(payload)
+  if (validationError) return { ok: false, error: validationError }
+
+  const supabase = await createSupabaseServerClient()
+  const { data: authData } = await supabase.auth.getUser()
+
+  const service = createSupabaseServiceClient()
+  const { error } = await service.from("calendar_event").insert({
+    term_id: payload.termId,
+    title: payload.title.trim(),
+    event_date: payload.date,
+    start_time: payload.startTime || null,
+    end_time: payload.endTime || null,
+    location: payload.location.trim() || null,
+    description: payload.description.trim() || null,
+    created_by: authData.user?.id ?? null,
+  })
+
+  if (error) {
+    console.error("[createCalendarEvent] insert failed", error)
+    if (error.code === "42P01" || error.code === "PGRST205") {
+      return { ok: false, error: "Events table is missing — run migration 0011_calendar_event.sql." }
+    }
+    return { ok: false, error: "Failed to create event." }
+  }
+
+  return { ok: true }
+}
+
+export async function deleteCalendarEvent(eventId: string): Promise<SettingsMutationResult> {
+  const role = await getAppUserRole()
+  if (role !== "admin") return { ok: false, error: "Unauthorized." }
+
+  const service = createSupabaseServiceClient()
+  const { error } = await service.from("calendar_event").delete().eq("event_id", eventId)
+
+  if (error) {
+    console.error("[deleteCalendarEvent] delete failed", error)
+    return { ok: false, error: "Failed to delete event." }
+  }
+
+  return { ok: true }
 }
 
 async function resolveCurrentUser(

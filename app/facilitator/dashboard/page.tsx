@@ -23,8 +23,10 @@ import {
   ProgressBar,
   DonutChart,
   Calendar,
-  InfoCircle
+  InfoCircle,
+  type CalendarEventMarker,
 } from "../facilitator"
+import { eventSubtitle, fetchActiveTermEvents } from "@/lib/calendar-events"
 import { QrScanner } from "@/components/shared/QrScanner"
 import { signOutWithAudit } from "@/lib/auth-actions"
 import { createClient } from "@/lib/client"
@@ -114,6 +116,7 @@ export default function DashboardPage() {
   const [dashboardData, setDashboardData] = useState<DashboardRow[]>([])
   const [recentActivity, setRecentActivity] = useState<{ summary: string; created_at_hours: string }[]>([])
   const [activeSemData, setActiveSemData] = useState<{ section_id: string; section_name: string; sem_end_date: string; remaining_days: string; holidays: { date: string; name: string }[], deadlines: {date:string; name:string}[] }[]>([])
+  const [calendarEvents, setCalendarEvents] = useState<CalendarEventMarker[]>([])
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
   const [animKey, setAnimKey] = useState(0)
@@ -133,6 +136,9 @@ export default function DashboardPage() {
       supabase.rpc("get_adviser_recent_activity", { p_adviser_user_id: uid }),
       supabase.rpc("get_active_sem", { p_adviser_user_id: uid }),
     ])
+    fetchActiveTermEvents(supabase).then((rows) =>
+      setCalendarEvents(rows.map((r) => ({ title: r.title, date: r.date, subtitle: eventSubtitle(r) })))
+    )
 
     if (dashboardError) console.error(dashboardError)
     if (dashboardData) setDashboardData(dashboardData)
@@ -615,7 +621,7 @@ export default function DashboardPage() {
                   </div>
 
                   {/* Calendar */}
-                  <Calendar semEndDate={currentSemData?.sem_end_date} holidays={currentSemData?.holidays ?? []} deadlines={currentSemData?.deadlines ?? []} />
+                  <Calendar semEndDate={currentSemData?.sem_end_date} holidays={currentSemData?.holidays ?? []} deadlines={currentSemData?.deadlines ?? []} events={calendarEvents} />
                   {/* Recent Activity */}
                   <div className={`activity-card ${recentActivity.length === 0 ? "flex-1" : ""}`} style={{ width: "100%" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 6, paddingRight: 20 }}>

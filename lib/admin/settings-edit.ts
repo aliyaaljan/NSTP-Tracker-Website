@@ -124,6 +124,95 @@ export function validateHolidayDelete(holiday: HolidayRow): string | null {
   return null
 }
 
+/** Payload for creating a calendar event / reminder. Maps to `calendar_event`. */
+export interface CalendarEventCreatePayload {
+  /** `calendar_event.term_id` — active term */
+  termId: string
+  title: string
+  /** ISO date YYYY-MM-DD */
+  date: string
+  /** "HH:MM" or "" for all-day */
+  startTime: string
+  /** "HH:MM" or "" */
+  endTime: string
+  location: string
+  description: string
+}
+
+export const CALENDAR_EVENT_TITLE_MAX = 120
+export const CALENDAR_EVENT_LOCATION_MAX = 200
+export const CALENDAR_EVENT_DESCRIPTION_MAX = 1000
+
+export function emptyCalendarEventCreatePayload(termId: string): CalendarEventCreatePayload {
+  return {
+    termId,
+    title: "",
+    date: "",
+    startTime: "",
+    endTime: "",
+    location: "",
+    description: "",
+  }
+}
+
+export type CalendarEventFieldKey =
+  | "title"
+  | "date"
+  | "startTime"
+  | "endTime"
+  | "location"
+  | "description"
+
+export type CalendarEventFieldErrors = Partial<Record<CalendarEventFieldKey, string>>
+
+function isValidTime(value: string): boolean {
+  return /^([01]\d|2[0-3]):[0-5]\d$/.test(value)
+}
+
+export function collectCalendarEventFieldErrors(
+  payload: CalendarEventCreatePayload
+): CalendarEventFieldErrors {
+  const errors: CalendarEventFieldErrors = {}
+  const title = payload.title.trim()
+  if (!title) {
+    errors.title = "Event title is required."
+  } else if (title.length > CALENDAR_EVENT_TITLE_MAX) {
+    errors.title = `Event title must be at most ${CALENDAR_EVENT_TITLE_MAX} characters.`
+  }
+  if (!payload.date.trim()) {
+    errors.date = "Event date is required."
+  } else if (!isValidIsoDate(payload.date)) {
+    errors.date = "Event date must be YYYY-MM-DD."
+  }
+  if (payload.startTime && !isValidTime(payload.startTime)) {
+    errors.startTime = "Start time must be HH:MM."
+  }
+  if (payload.endTime) {
+    if (!isValidTime(payload.endTime)) {
+      errors.endTime = "End time must be HH:MM."
+    } else if (!payload.startTime) {
+      errors.endTime = "Set a start time first."
+    } else if (payload.endTime < payload.startTime) {
+      errors.endTime = "End time must be after the start time."
+    }
+  }
+  if (payload.location.trim().length > CALENDAR_EVENT_LOCATION_MAX) {
+    errors.location = `Location must be at most ${CALENDAR_EVENT_LOCATION_MAX} characters.`
+  }
+  if (payload.description.trim().length > CALENDAR_EVENT_DESCRIPTION_MAX) {
+    errors.description = `Description must be at most ${CALENDAR_EVENT_DESCRIPTION_MAX} characters.`
+  }
+  return errors
+}
+
+export function validateCalendarEventCreatePayload(
+  payload: CalendarEventCreatePayload
+): string | null {
+  if (!payload.termId.trim()) return "Term ID is required."
+  const errors = collectCalendarEventFieldErrors(payload)
+  return Object.values(errors)[0] ?? null
+}
+
 export type AcademicYearCreatePayload = {
   schoolYear: string
   semester: string

@@ -74,6 +74,41 @@ export interface HolidayRow {
   isSample?: boolean
 }
 
+export interface CalendarEventRow {
+  /** `calendar_event.event_id` */
+  eventId: string
+  /** `calendar_event.term_id` */
+  termId: string
+  /** `calendar_event.title` e.g. "Basic First Aid Training" */
+  title: string
+  /** `calendar_event.event_date` — ISO date (YYYY-MM-DD) */
+  date: string
+  /** `calendar_event.start_time` — "HH:MM" (24h) or null for all-day */
+  startTime: string | null
+  /** `calendar_event.end_time` — "HH:MM" (24h) or null */
+  endTime: string | null
+  /** `calendar_event.location` */
+  location: string | null
+  /** `calendar_event.description` */
+  description: string | null
+}
+
+/** "08:00" → "8:00 AM". Accepts "HH:MM" or "HH:MM:SS". */
+export function formatEventTime(time: string): string {
+  const [h, m] = time.split(":").map(Number)
+  const period = h >= 12 ? "PM" : "AM"
+  const hour12 = h % 12 === 0 ? 12 : h % 12
+  return `${hour12}:${String(m).padStart(2, "0")} ${period}`
+}
+
+/** "8:00 AM – 12:00 PM", "8:00 AM", or "" for all-day events. */
+export function formatEventTimeRange(startTime: string | null, endTime: string | null): string {
+  if (!startTime) return ""
+  return endTime
+    ? `${formatEventTime(startTime)} – ${formatEventTime(endTime)}`
+    : formatEventTime(startTime)
+}
+
 export interface SettingsMeta {
   academicYear: string
   semester: string
@@ -90,6 +125,7 @@ export interface SettingsPageData {
   schoolYearOptions: SchoolYearOption[]
   semesterOptions: SemesterOption[]
   holidays: HolidayRow[]
+  events: CalendarEventRow[]
   meta: SettingsMeta
   currentUser: AdminCurrentUser
 }

@@ -3,6 +3,9 @@
 import { useState, useEffect, useRef } from "react"
 import { IconChevronLeft, IconChevronRight } from "@tabler/icons-react"
 import { createClient } from "@/lib/client"
+import { eventSubtitle, fetchActiveTermEvents } from "@/lib/calendar-events"
+
+const EVENT_COLOR = '#1D4ED8'
 
 const MONTHS = [
   "January", "February", "March", "April", "May", "June",
@@ -39,8 +42,12 @@ export interface CalendarEvent {
   day: number
   month: number
   title: string
-  type: "holiday" | "deadline" | "submitted" | "sem_end"
+  type: "holiday" | "deadline" | "submitted" | "sem_end" | "event"
+  /** Only set for admin events, which are tied to a specific year. */
+  year?: number
   note?: string
+  /** Longer text shown under the title in the popup (admin events). */
+  details?: string
   status?: "submitted" | "pending"
 }
 
@@ -97,6 +104,30 @@ export default function CalendarOverview({
   const supabase = createClient()
   const [holidays, setHolidays] = useState<CalendarEvent[]>([])
   const [semEndDate, setSemEndDate] = useState<{ title: string; day: number; month: number } | null>(null)
+  const [adminEvents, setAdminEvents] = useState<CalendarEvent[]>([])
+
+  useEffect(() => {
+    let cancelled = false
+    fetchActiveTermEvents(supabase).then((rows) => {
+      if (cancelled) return
+      setAdminEvents(
+        rows.map((row) => {
+          const [y, m, d] = row.date.split("-").map(Number)
+          return {
+            day: d,
+            month: m - 1,
+            year: y,
+            title: row.title,
+            type: "event" as const,
+            note: eventSubtitle(row),
+            details: row.description ?? undefined,
+          }
+        })
+      )
+    })
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -212,6 +243,9 @@ export default function CalendarOverview({
   })
 
   const currentMonthEvents = holidays.filter(e => e.month === currentMonth)
+  currentMonthEvents.push(
+    ...adminEvents.filter(e => e.month === currentMonth && e.year === currentYear)
+  )
 
   if (semEndDate && semEndDate.month === currentMonth) {
     currentMonthEvents.push({
@@ -329,7 +363,8 @@ export default function CalendarOverview({
     }
     if (event.type === 'submitted') return 'SUBMITTED'
     if (event.type === 'deadline') return 'PENDING'
-     if (event.type === 'sem_end') return 'END OF SEMESTER' 
+    if (event.type === 'sem_end') return 'END OF SEMESTER'
+    if (event.type === 'event') return 'EVENT'
     return ''
   }
 
@@ -363,10 +398,11 @@ export default function CalendarOverview({
                 </span>
               )}
             </div>
+            {event.type === 'event' && <EventDetails event={event} />}
             <div style={styles.popupBadgeContainer}>
               <span style={{
                 ...styles.popupBadge,
-                background: isRenderedTime ? '#14492E' : (isHolidayEvent ? '#D97706' : '#7B1D1D'),
+                background: isRenderedTime ? '#14492E' : (isHolidayEvent ? '#D97706' : (event.type === 'event' ? EVENT_COLOR : '#7B1D1D')),
                 color: 'white',
               }}>
                 {isRenderedTime ? 'RENDERED' : label}
@@ -412,10 +448,11 @@ export default function CalendarOverview({
                         </span>
                       )}
                     </div>
+                    {event.type === 'event' && <EventDetails event={event} />}
                     <div style={styles.popupBadgeContainer}>
                       <span style={{
                         ...styles.popupBadge,
-                        background: isRenderedTime ? '#14492E' : (isHolidayEvent ? '#D97706' : '#7B1D1D'),
+                        background: isRenderedTime ? '#14492E' : (isHolidayEvent ? '#D97706' : (event.type === 'event' ? EVENT_COLOR : '#7B1D1D')),
                         color: 'white',
                       }}>
                         {isRenderedTime ? 'RENDERED' : label}
@@ -560,7 +597,7 @@ export default function CalendarOverview({
                     width: 14,
                     height: 4,
                     borderRadius: 3,
-                    backgroundColor: isSemEndDay ? 'transparent' : (isHolidayDay ? '#D97706' : (hasRenderedTime ? '#14492E' : '#D97706')),
+                    backgroundColor: isSemEndDay ? 'transparent' : (isHolidayDay ? '#D97706' : (hasRenderedTime ? '#14492E' : (dayEvents.some(e => e.type === 'event') ? EVENT_COLOR : '#D97706'))),
                     display: isSemEndDay ? 'none' : 'block',
                   }} />
                 )}
@@ -604,6 +641,16 @@ export default function CalendarOverview({
         </div>
         <div style={styles.legendItem}>
           <div style={{
+            width: 14,
+            height: 4,
+            borderRadius: 3,
+            backgroundColor: EVENT_COLOR,
+            flexShrink: 0,
+          }} />
+          <span style={{ fontSize: 11, color: '#6B7280' }}>Event</span>
+        </div>
+        <div style={styles.legendItem}>
+          <div style={{
             width: 16,
             height: 16,
             borderRadius: '50%',
@@ -614,6 +661,19 @@ export default function CalendarOverview({
           <span style={{ fontSize: 11, color: '#6B7280' }}>Last Day</span>
         </div>
       </div>
+    </div>
+  )
+}
+
+function EventDetails({ event }: { event: CalendarEvent }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, margin: '4px 0 8px' }}>
+      {event.note && (
+        <span style={{ fontSize: 13, fontWeight: 600, color: EVENT_COLOR }}>{event.note}</span>
+      )}
+      {event.details && (
+        <span style={{ fontSize: 13, color: '#4B5563', whiteSpace: 'pre-wrap' }}>{event.details}</span>
+      )}
     </div>
   )
 }

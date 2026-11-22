@@ -12,6 +12,7 @@ import {
   IconUser,
   IconBook,
   IconSwitchHorizontal,
+  IconTicket,
 } from "@tabler/icons-react";
 import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
@@ -34,6 +35,7 @@ export const navItems: NavItem[] = [
   { label: "My Students",   Icon: IconUsersGroup    },
   { label: "Forms",         Icon: IconClipboardText },
   { label: "Group Summary", Icon: IconChartBar      },
+  { label: "Tickets",       Icon: IconTicket        },
 ];
 
 // ── Routes ────────────────────────────────────────────────────────────
@@ -42,6 +44,7 @@ export const navRoutes: Record<string, string> = {
   "My Students":   "/facilitator/my-students",
   "Forms":         "/facilitator/forms",
   "Group Summary": "/facilitator/group-summary",
+  "Tickets":       "/facilitator/tickets",
 };
 
 const DAYS   = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
@@ -123,7 +126,15 @@ export function DonutChart({ pct = 60 }: { pct?: number }) {
   );
 }
 
-export function Calendar({ semEndDate, holidays = [], deadlines = []}: { semEndDate?: string | Date, holidays?: { name: string; date: string | null }[], deadlines?: { name: string; date: string | null }[]}) {
+export interface CalendarEventMarker {
+  title: string;
+  /** ISO date YYYY-MM-DD */
+  date: string;
+  /** e.g. "8:00 AM – 12:00 PM · UP Baguio Gym" */
+  subtitle?: string;
+}
+
+export function Calendar({ semEndDate, holidays = [], deadlines = [], events = []}: { semEndDate?: string | Date, holidays?: { name: string; date: string | null }[], deadlines?: { name: string; date: string | null }[], events?: CalendarEventMarker[]}) {
   const today = new Date();
 
   const semEnd = typeof semEndDate === "string" 
@@ -141,6 +152,11 @@ export function Calendar({ semEndDate, holidays = [], deadlines = []}: { semEndD
   const parsedDeadlines = deadlines.filter((d): d is { name: string; date: string } => !!d.date).map((d) => {
     const [year, month, day] = d.date.split("-").map(Number);
     return { date: new Date(year, month - 1, day), name: d.name };
+  });
+
+  const parsedEvents = events.map((e) => {
+    const [year, month, day] = e.date.split("-").map(Number);
+    return { ...e, date: new Date(year, month - 1, day) };
   });
 
   const [current, setCurrent] = useState({ year: today.getFullYear(), month: today.getMonth() });
@@ -169,6 +185,11 @@ export function Calendar({ semEndDate, holidays = [], deadlines = []}: { semEndD
       (dl) => dl.date.getDate() === d && dl.date.getMonth() === current.month && dl.date.getFullYear() === current.year
     );
 
+  const getEvents = (d: number) =>
+    parsedEvents.filter(
+      (ev) => ev.date.getDate() === d && ev.date.getMonth() === current.month && ev.date.getFullYear() === current.year
+    );
+
   const prev = () => setCurrent(c => c.month === 0 ? { year: c.year - 1, month: 11 } : { year: c.year, month: c.month - 1 });
   const next = () => setCurrent(c => c.month === 11 ? { year: c.year + 1, month: 0 } : { year: c.year, month: c.month + 1 });
 
@@ -186,7 +207,8 @@ export function Calendar({ semEndDate, holidays = [], deadlines = []}: { semEndD
           const cellIsSemEnd = d && isSemEnd(d);
           const cellHoliday = d ? getHoliday(d) : undefined;
           const cellDeadline = d ? getDeadline(d) : undefined;
-          const hasLabel = cellIsToday || cellIsSemEnd || cellHoliday || cellDeadline;
+          const cellEvents = d ? getEvents(d) : [];
+          const hasLabel = cellIsToday || cellIsSemEnd || cellHoliday || cellDeadline || cellEvents.length > 0;
           const col = i % 7;
           const edgeAlign = col === 0 ? "left-0 translate-x-0" : col === 5 || col === 6 ? "left-auto right-0 translate-x-0" : "left-1/2 -translate-x-1/2";
 
@@ -205,6 +227,7 @@ export function Calendar({ semEndDate, holidays = [], deadlines = []}: { semEndD
               .join(" ")}
             >
               {d !== null ? <span className="cal-day-num">{d}</span> : null}
+              {cellEvents.length > 0 && <span className="cal-event-dot" aria-hidden />}
 
               {hasLabel && (
                 <span className={`capitalize absolute bottom-full ${edgeAlign} mb-1 hidden group-hover:flex flex-col gap-0.5 bg-white text-[12px] rounded px-2 py-1 z-10 pointer-events-none shadow-md max-w-[277px]`}>
@@ -221,6 +244,12 @@ export function Calendar({ semEndDate, holidays = [], deadlines = []}: { semEndD
                       {cellDeadline.name}
                     </span>
                   )}
+                  {cellEvents.map((ev, idx) => (
+                    <span key={idx} className="flex flex-col" title={ev.subtitle ? `${ev.title} · ${ev.subtitle}` : ev.title}>
+                      <span className="truncate font-semibold" style={{ color: "#1D4ED8" }}>{ev.title}</span>
+                      {ev.subtitle && <span className="truncate normal-case text-[11px] text-gray-500">{ev.subtitle}</span>}
+                    </span>
+                  ))}
                   {cellIsSemEnd && (
                     <span className="truncate text-maroon" title="End of Semester">
                       End of Semester
@@ -645,6 +674,19 @@ export const dashboardStyles = `
     border-radius: 50%;
     border: 3px solid var(--amber);
     z-index: 3;
+    pointer-events: none;
+  }
+  .cal-event-dot {
+    position: absolute;
+    bottom: 4%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 0.32em;
+    height: 0.32em;
+    border-radius: 50%;
+    background: #1D4ED8;
+    box-shadow: 0 0 0 1.5px #fff;
+    z-index: 4;
     pointer-events: none;
   }
   .cal-cell.cal-sem-end {
