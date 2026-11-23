@@ -1,9 +1,9 @@
 import { Suspense } from "react"
 import AdminLoadingFallback from "@/components/admin/AdminLoadingFallback"
-import AdminTicketsClient from "@/components/admin/AdminTicketsClient"
+import AdminRequestsClient from "@/components/admin/AdminRequestsClient"
 import type { AdminCurrentUser } from "@/lib/admin/settings"
 import { createSupabaseServerClient } from "@/lib/supabase/server-client"
-import { getAllStudentRequests, getAllTickets } from "@/lib/tickets/ticket-actions"
+import { getAllStudentRequests } from "@/lib/admin/student-requests-actions"
 
 export const revalidate = 0
 
@@ -25,28 +25,22 @@ async function getCurrentAdmin(): Promise<AdminCurrentUser> {
   }
 }
 
-async function TicketsContent() {
-  const [tickets, requests, currentUser] = await Promise.all([
-    getAllTickets(),
-    getAllStudentRequests(),
-    getCurrentAdmin(),
-  ])
+async function RequestsContent() {
+  const [requests, currentUser] = await Promise.all([getAllStudentRequests(), getCurrentAdmin()])
 
   return (
-    <AdminTicketsClient
-      initialTickets={tickets.ok ? tickets.data : []}
-      ticketsError={tickets.ok ? null : tickets.error}
+    <AdminRequestsClient
       requests={requests.ok ? requests.data : []}
-      requestsError={requests.ok ? null : requests.error}
+      error={requests.ok ? null : requests.error}
       currentUser={currentUser}
     />
   )
 }
 
-export default function AdminTicketsPage() {
+export default function AdminRequestsPage() {
   return (
     <Suspense fallback={<AdminLoadingFallback />}>
-      <TicketsContent />
+      <RequestsContent />
     </Suspense>
   )
 }

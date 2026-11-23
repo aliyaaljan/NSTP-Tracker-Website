@@ -12,7 +12,6 @@ import {
   IconUser,
   IconBook,
   IconSwitchHorizontal,
-  IconTicket,
 } from "@tabler/icons-react";
 import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
@@ -35,7 +34,6 @@ export const navItems: NavItem[] = [
   { label: "My Students",   Icon: IconUsersGroup    },
   { label: "Forms",         Icon: IconClipboardText },
   { label: "Group Summary", Icon: IconChartBar      },
-  { label: "Tickets",       Icon: IconTicket        },
 ];
 
 // ── Routes ────────────────────────────────────────────────────────────
@@ -44,7 +42,6 @@ export const navRoutes: Record<string, string> = {
   "My Students":   "/facilitator/my-students",
   "Forms":         "/facilitator/forms",
   "Group Summary": "/facilitator/group-summary",
-  "Tickets":       "/facilitator/tickets",
 };
 
 const DAYS   = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
